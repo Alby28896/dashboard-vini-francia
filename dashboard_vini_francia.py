@@ -1,15 +1,14 @@
 # DASHBOARD INTERATTIVA VINI DI FRANCIA (COMPLETA)
 
 # 1. Installazione dei pacchetti:
-# pip install streamlit pandas plotly folium streamlit-folium
+# pip install streamlit pandas plotly geopandas
 
 # 2. Salva come: dashboard_vini_francia.py
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import folium
-from streamlit_folium import folium_static
+import geopandas as gpd
 
 st.set_page_config(layout="wide")
 
@@ -32,19 +31,6 @@ else:
         ],
         'Regione': ['Bordeaux', 'Bourgogne', 'Champagne', 'Rhône', 'Loire']
     })
-
-# ---------- COORDINATE REGIONI ----------
-regioni_coord = {
-    'Bordeaux': [44.837789, -0.57918],
-    'Champagne': [49.256, 4.031],
-    'Bourgogne': [47.0524, 4.3837],
-    'Alsace': [48.3182, 7.4416],
-    'Loire': [47.7516, 0.334],
-    'Provence': [43.9352, 6.0679],
-    'Rhône': [44.9334, 4.8924],
-    'Languedoc-Roussillon': [43.6119, 3.8777],
-    'Corsica': [42.0396, 9.0129]
-}
 
 # ---------- ESTRAZIONE VITIGNI SINGOLI ----------
 dati_vini['Vitigni_List'] = dati_vini['Vitigni'].str.split(', ')
@@ -85,16 +71,32 @@ st.subheader("🥧 Distribuzione Percentuale Tipi di Vino")
 fig3 = px.pie(dati_filtrati, names='Tipo', title='Distribuzione dei Tipi di Vino')
 st.plotly_chart(fig3, use_container_width=True)
 
-# ---------- MAPPA INTERATTIVA ----------
-st.subheader("🗺️ Mappa delle Regioni Vinicole")
-mappa = folium.Map(location=[46.603354, 1.888334], zoom_start=6)
-for index, row in dati_filtrati.iterrows():
-    regione = row['Regione']
-    if regione in regioni_coord:
-        coord = regioni_coord[regione]
-        popup_text = f"<b>{row['Vino']}</b><br>Tipo: {row['Tipo']}<br>Vitigni: {row['Vitigni']}"
-        folium.Marker(location=coord, popup=popup_text).add_to(mappa)
-folium_static(mappa)
+# ---------- MAPPA REGIONI INTERATTIVA CON PLOTLY ----------
+st.subheader("🗺️ Mappa delle Regioni Vinicole (interattiva e cliccabile)")
+
+@st.cache_data
+def carica_geojson():
+    url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/regions/regions.geojson"
+    gdf = gpd.read_file(url)
+    return gdf
+
+regioni_geo = carica_geojson()
+
+# Conta i vini per regione nel geojson
+regioni_geo['nome'] = regioni_geo['nom']
+regioni_geo['Numero_Vini'] = regioni_geo['nome'].apply(lambda r: dati_filtrati['Regione'].str.contains(r, case=False).sum())
+
+fig_map = px.choropleth(
+    regioni_geo,
+    geojson=regioni_geo.geometry,
+    locations=regioni_geo.index,
+    color='Numero_Vini',
+    hover_name='nome',
+    projection="mercator"
+)
+fig_map.update_geos(fitbounds="locations", visible=False)
+fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+st.plotly_chart(fig_map, use_container_width=True)
 
 # ---------- TABELLA ----------
 st.subheader("📋 Tabella dei Vini Filtrati")
